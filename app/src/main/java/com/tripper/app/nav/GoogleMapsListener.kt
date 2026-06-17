@@ -11,6 +11,26 @@ class GoogleMapsListener : NotificationListenerService() {
     companion object {
         private const val TAG = "MapsListener"
         private const val GOOGLE_MAPS_PKG = "com.google.android.apps.maps"
+
+        fun iconToEmoji(iconId: Int): String = when (iconId) {
+            com.tripper.app.ble.PacketBuilder.Icons.DEPART -> "🚩"
+            com.tripper.app.ble.PacketBuilder.Icons.DESTINATION -> "🏁"
+            com.tripper.app.ble.PacketBuilder.Icons.STRAIGHT -> "⬆"
+            com.tripper.app.ble.PacketBuilder.Icons.TURN_LEFT -> "⬅"
+            com.tripper.app.ble.PacketBuilder.Icons.TURN_RIGHT -> "➡"
+            com.tripper.app.ble.PacketBuilder.Icons.SLIGHT_LEFT -> "↖"
+            com.tripper.app.ble.PacketBuilder.Icons.SLIGHT_RIGHT -> "↗"
+            com.tripper.app.ble.PacketBuilder.Icons.SHARP_LEFT -> "↙"
+            com.tripper.app.ble.PacketBuilder.Icons.SHARP_RIGHT -> "↘"
+            com.tripper.app.ble.PacketBuilder.Icons.KEEP_LEFT -> "↰"
+            com.tripper.app.ble.PacketBuilder.Icons.KEEP_RIGHT -> "↱"
+            com.tripper.app.ble.PacketBuilder.Icons.U_TURN_CW -> "↩"
+            com.tripper.app.ble.PacketBuilder.Icons.U_TURN_CCW -> "↪"
+            com.tripper.app.ble.PacketBuilder.Icons.ROUNDABOUT -> "🔄"
+            com.tripper.app.ble.PacketBuilder.Icons.MERGE -> "🔀"
+            com.tripper.app.ble.PacketBuilder.Icons.FERRY_BOAT -> "⛴"
+            else -> "⬆"
+        }
     }
 
     private var lastTurnText = ""
@@ -44,6 +64,18 @@ class GoogleMapsListener : NotificationListenerService() {
         val eta = TurnParser.parseEta(text, subText)
 
         lastTurnText = title
+
+        // Publish to live preview
+        com.tripper.app.live.LiveDataRepository.updateNav(
+            com.tripper.app.live.NavInfo(
+                turnIcon = iconToEmoji(turn.iconId),
+                turnLabel = turn.label,
+                distance = distance.raw,
+                eta = if (eta.hours > 0 || eta.minutes > 0) "${eta.hours}:${"%02d".format(eta.minutes)}" else "",
+                totalDistance = "",
+                streetName = "",
+            )
+        )
 
         val packet = buildNavPacket(turn, distance, eta)
         val hash = packet.contentHashCode()

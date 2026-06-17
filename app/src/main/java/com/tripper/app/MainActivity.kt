@@ -12,6 +12,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
@@ -184,6 +185,16 @@ fun TripperAppScreen(
 
     var showEditSheet by remember { mutableStateOf(false) }
 
+    // Live data
+    val navData by com.tripper.app.live.LiveDataRepository.nav.collectAsState()
+    val musicData by com.tripper.app.live.LiveDataRepository.music.collectAsState()
+    val callData by com.tripper.app.live.LiveDataRepository.call.collectAsState()
+
+    // Start call tracker
+    LaunchedEffect(Unit) {
+        com.tripper.app.live.CallTracker(context).start()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -224,7 +235,7 @@ fun TripperAppScreen(
             // ── Tripper Live Preview ──
             Text("Tripper Display Preview", color = Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(10.dp))
-            TripperPreview()
+            TripperPreview(navData = navData, musicData = musicData, callData = callData)
             Spacer(Modifier.height(24.dp))
 
             // ── Settings ──
@@ -671,121 +682,222 @@ fun ConnectionSection(
     }
 }
 
-// ─── Tripper Live Preview ──────────────────────────────────────────────────
+// ─── Premium Tripper Live Preview ─────────────────────────────────────────
+
+private val glassWhite = Color.White.copy(alpha = 0.06f)
+private val glassBorder = Color.White.copy(alpha = 0.08f)
 
 @Composable
-fun TripperPreview() {
-    var mode by remember { mutableStateOf(0) } // 0=nav, 1=music, 2=call
-    val modeName = listOf("Navigation", "Music", "Incoming Call")
-    val modeIcon = listOf("🗺️", "🎵", "📞")
+fun TripperPreview(
+    navData: com.tripper.app.live.NavInfo,
+    musicData: com.tripper.app.live.MusicInfo,
+    callData: com.tripper.app.live.CallInfo,
+) {
+    var mode by remember { mutableIntStateOf(0) }
 
-    val turnIcon = listOf("⬆", "↗", "→", "↘", "⬇", "↙", "←", "↖", "↩")
-    val currentIcon = remember { mutableIntStateOf(0) }
+    val hasNav = navData.turnLabel.isNotBlank()
+    val hasMusic = musicData.isPlaying
+    val hasCall = callData.isRinging
 
-    LaunchedEffect(mode) {
-        while (true) {
-            kotlinx.coroutines.delay(2000)
-            currentIcon.intValue = (currentIcon.intValue + 1) % turnIcon.size
+    // Auto-switch to the mode with live data, fallback 0
+    LaunchedEffect(hasNav, hasMusic, hasCall) {
+        when {
+            hasCall -> mode = 2
+            hasMusic -> mode = 1
+            hasNav -> mode = 0
         }
     }
 
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Surface),
-        border = BorderStroke(1.dp, SurfaceLight),
+        border = BorderStroke(1.dp, glassBorder),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Mode selector tabs
-            Row(
+            // Premium selector pill
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .background(SurfaceLight, RoundedCornerShape(12.dp))
-                    .padding(3.dp),
+                    .background(glassWhite, RoundedCornerShape(100.dp))
+                    .border(0.5.dp, glassBorder, RoundedCornerShape(100.dp))
+                    .padding(4.dp),
             ) {
-                (0..2).forEach { i ->
-                    val selected = i == mode
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected) Accent else Color.Transparent)
-                            .clickable { mode = i }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            modeIcon[i],
-                            fontSize = 14.sp,
-                            color = if (selected) Background else TextSecondary,
-                        )
+                Row {
+                    listOf("NAV", "MUSIC", "CALL").forEachIndexed { i, label ->
+                        val selected = i == mode
+                        val hasDot = when (i) {
+                            0 -> hasNav; 1 -> hasMusic; 2 -> hasCall
+                            else -> false
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(100.dp))
+                                .background(if (selected) Accent else Color.Transparent)
+                                .clickable { mode = i }
+                                .padding(horizontal = 18.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    label,
+                                    color = if (selected) Background else TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                    letterSpacing = 2.sp,
+                                )
+                                if (hasDot) {
+                                    Spacer(Modifier.width(4.dp))
+                                    Box(Modifier.size(5.dp).clip(CircleShape).background(Accent))
+                                }
+                            }
+                        }
                     }
                 }
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(20.dp))
 
-            // Round display
+            // Premium round display
             Box(
                 modifier = Modifier
-                    .size(200.dp)
+                    .size(220.dp)
                     .clip(CircleShape)
-                    .background(SurfaceLight)
-                    .border(2.dp, Accent.copy(alpha = 0.5f), CircleShape),
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.radialGradient(
+                            colors = listOf(Color(0xFF111111), Color(0xFF050505)),
+                            radius = 220f,
+                        )
+                    )
+                    .border(1.5.dp, glassBorder, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
-                when (mode) {
-                    0 -> NavigationPreview(turnIcon[currentIcon.intValue])
-                    1 -> MusicPreview()
-                    2 -> CallPreview()
+                // Outer glow ring
+                Box(
+                    modifier = Modifier
+                        .size(210.dp)
+                        .clip(CircleShape)
+                        .border(1.dp, Accent.copy(alpha = 0.08f), CircleShape)
+                )
+                // Inner subtle ring
+                Box(
+                    modifier = Modifier
+                        .size(170.dp)
+                        .clip(CircleShape)
+                        .border(0.5.dp, Accent.copy(alpha = 0.04f), CircleShape)
+                )
+
+                // Content with crossfade
+                AnimatedContent(
+                    targetState = mode,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                    },
+                    label = "preview",
+                ) { m ->
+                    when (m) {
+                        0 -> NavPreviewContent(navData)
+                        1 -> MusicPreviewContent(musicData)
+                        2 -> CallPreviewContent(callData)
+                    }
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            Text(modeName[mode], color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(10.dp))
+            // Status text
+            val status = when (mode) {
+                0 -> if (hasNav) navData.turnLabel.replaceFirstChar { it.uppercase() } else "No navigation"
+                1 -> if (hasMusic) "${musicData.title}" else "No music"
+                2 -> if (hasCall) "Incoming call" else "No calls"
+                else -> ""
+            }
+            Text(
+                status.ifBlank { "Standby" },
+                color = Accent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.sp,
+            )
         }
     }
 }
 
 @Composable
-private fun NavigationPreview(icon: String) {
+private fun NavPreviewContent(data: com.tripper.app.live.NavInfo) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(icon, fontSize = 42.sp)
+        Text(
+            data.turnIcon,
+            fontSize = 44.sp,
+        )
         Spacer(Modifier.height(4.dp))
-        Text("250 m", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        if (data.distance.isNotBlank()) {
+            Text(
+                data.distance,
+                color = Accent,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+            )
+        }
         Spacer(Modifier.height(2.dp))
-        Text("Turn right", color = TextPrimary.copy(alpha = 0.7f), fontSize = 13.sp)
-        Spacer(Modifier.height(4.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text("10:25", color = TextSecondary, fontSize = 11.sp)
-            Text("|", color = TextSecondary.copy(alpha = 0.3f), fontSize = 11.sp)
-            Text("12.4 km", color = TextSecondary, fontSize = 11.sp)
+        Text(
+            data.turnLabel.replaceFirstChar { it.uppercase() },
+            color = TextPrimary.copy(alpha = 0.7f),
+            fontSize = 13.sp,
+        )
+        if (data.eta.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "ETA ${data.eta}",
+                color = TextSecondary.copy(alpha = 0.6f),
+                fontSize = 10.sp,
+                letterSpacing = 1.sp,
+            )
         }
     }
 }
 
 @Composable
-private fun MusicPreview() {
+private fun MusicPreviewContent(data: com.tripper.app.live.MusicInfo) {
+    if (!data.isPlaying || data.title.isBlank()) {
+        Text("♫", fontSize = 40.sp)
+        Spacer(Modifier.height(4.dp))
+        Text("No music", color = TextSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+        return
+    }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("♫", fontSize = 36.sp)
+        Text("♫", fontSize = 32.sp)
         Spacer(Modifier.height(6.dp))
-        Text("Bohemian Rhapsody", color = Accent, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text(
+            data.title,
+            color = Accent,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         Spacer(Modifier.height(2.dp))
-        Text("Queen", color = TextPrimary.copy(alpha = 0.6f), fontSize = 12.sp)
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            listOf(0.6f, 0.4f, 0.8f, 0.3f, 0.7f).forEach { h ->
+        Text(
+            data.artist,
+            color = TextPrimary.copy(alpha = 0.5f),
+            fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            listOf(12, 18, 8, 22, 14, 20, 10).forEach { h ->
                 Box(
                     modifier = Modifier
                         .width(3.dp)
-                        .height((20 * h).dp)
+                        .height(h.dp)
                         .clip(RoundedCornerShape(2.dp))
-                        .background(Accent)
+                        .background(if (h > 15) Accent else Accent.copy(alpha = 0.4f))
                 )
             }
         }
@@ -793,23 +905,45 @@ private fun MusicPreview() {
 }
 
 @Composable
-private fun CallPreview() {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text("📞", fontSize = 36.sp)
-        Spacer(Modifier.height(6.dp))
-        Text("Incoming", color = Accent, fontSize = 13.sp)
-        Spacer(Modifier.height(2.dp))
-        Text("Mum", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+private fun CallPreviewContent(data: com.tripper.app.live.CallInfo) {
+    if (!data.isRinging) {
+        Text("📞", fontSize = 40.sp)
         Spacer(Modifier.height(4.dp))
-        Text("Mobile", color = TextSecondary.copy(alpha = 0.6f), fontSize = 11.sp)
+        Text("No calls", color = TextSecondary, fontSize = 12.sp, letterSpacing = 1.sp)
+        return
+    }
+
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("📞", fontSize = 34.sp)
         Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Incoming", color = Accent, fontSize = 11.sp, letterSpacing = 2.sp)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            data.callerName,
+            color = TextPrimary,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // Decline
             Box(
-                Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF331111)),
+                Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF331111))
+                    .border(1.dp, Color(0xFFFF4444).copy(alpha = 0.3f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) { Text("✕", color = Color(0xFFFF4444), fontSize = 16.sp) }
+            // Accept
             Box(
-                Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF113311)),
+                Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF113311))
+                    .border(1.dp, Accent.copy(alpha = 0.3f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) { Text("✓", color = Accent, fontSize = 16.sp) }
         }
