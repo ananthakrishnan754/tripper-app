@@ -3,7 +3,6 @@ package com.tripper.app
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.bluetooth.BluetoothDevice
 import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
@@ -29,10 +28,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
@@ -48,7 +46,7 @@ private val AccentDim = Color(0xFF8AB502)
 private val Background = Color(0xFF000000)
 private val Surface = Color(0xFF0A0A0A)
 private val SurfaceLight = Color(0xFF1A1A1A)
-private val TextPrimary = Color(0xFFE0E0E0)
+private val TextPrimary = Color(0xFFE8E8E8)
 private val TextSecondary = Color(0xFF808080)
 
 class MainActivity : ComponentActivity() {
@@ -64,7 +62,6 @@ class MainActivity : ComponentActivity() {
             bleService = (service as? TripperBleService.LocalBinder)?.getService()
             bound = true
         }
-
         override fun onServiceDisconnected(name: ComponentName?) {
             bleService = null
             bound = false
@@ -161,6 +158,7 @@ class MainActivity : ComponentActivity() {
 
 // ─── Main Screen ───────────────────────────────────────────────────────────
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TripperAppScreen(
     onScan: () -> Unit,
@@ -168,7 +166,8 @@ fun TripperAppScreen(
     onOpenSettings: () -> Unit,
     bleService: TripperBleService?,
 ) {
-    val prefs = LocalContext.current.getSharedPreferences("tripper_prefs", 0)
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences("tripper_prefs", 0)
 
     var selectedModelIndex by remember {
         mutableIntStateOf(prefs.getInt("model_index", 0))
@@ -180,6 +179,8 @@ fun TripperAppScreen(
     val models = royalEnfieldModels
     val currentModel = models.getOrNull(selectedModelIndex) ?: models.first()
     val currentColor = currentModel.colors.getOrNull(selectedColorIndex) ?: currentModel.colors.first()
+
+    var showEditSheet by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -201,44 +202,12 @@ fun TripperAppScreen(
             Text("for Royal Enfield", color = TextSecondary, fontSize = 13.sp)
             Spacer(Modifier.height(24.dp))
 
-            // ── Bike Selector ──
-            BikeModelCarousel(
-                models = models,
-                selectedIndex = selectedModelIndex,
-                onSelect = { i ->
-                    selectedModelIndex = i
-                    selectedColorIndex = 0
-                    prefs.edit().putInt("model_index", i).putInt("color_index", 0).apply()
-                }
-            )
-            Spacer(Modifier.height(16.dp))
-
-            ColorSelector(
-                colors = currentModel.colors,
-                selectedIndex = selectedColorIndex,
-                onSelect = { i ->
-                    selectedColorIndex = i
-                    prefs.edit().putInt("color_index", i).apply()
-                }
-            )
-            Spacer(Modifier.height(20.dp))
-
-            // ── Bike Silhouette ──
-            BikeSilhouette(
+            // ── Hero Bike Image ──
+            BikeHeroImage(
                 color = currentColor.color,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)
-                    .padding(horizontal = 16.dp)
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                currentModel.name, color = TextPrimary, fontSize = 16.sp,
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                currentColor.name, color = Accent, fontSize = 13.sp,
-                fontWeight = FontWeight.Light
+                modelName = currentModel.name,
+                colorName = currentColor.name,
+                onLongPress = { showEditSheet = true },
             )
             Spacer(Modifier.height(24.dp))
 
@@ -251,193 +220,358 @@ fun TripperAppScreen(
             Spacer(Modifier.height(24.dp))
 
             // ── Divider ──
-            HorizontalDivider(color = Accent.copy(alpha = 0.3f), thickness = 1.dp)
+            HorizontalDivider(color = Accent.copy(alpha = 0.15f), thickness = 1.dp)
             Spacer(Modifier.height(16.dp))
 
             // ── Music ──
-            MusicSection()
-            Spacer(Modifier.height(16.dp))
+            CollapsibleSection("🎵", "Music", "Now playing from Spotify, YouTube Music will appear here.")
+            Spacer(Modifier.height(12.dp))
 
             // ── Caller ──
-            CallerSection()
+            CollapsibleSection("📞", "Caller ID", "Incoming caller info will be relayed to Tripper.")
             Spacer(Modifier.height(24.dp))
 
             // ── Settings ──
             OutlinedButton(
                 onClick = onOpenSettings,
-                border = BorderStroke(1.dp, Accent.copy(alpha = 0.5f)),
+                border = BorderStroke(1.dp, Accent.copy(alpha = 0.4f)),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = Accent),
-            ) { Text("Notification Access Settings", fontSize = 13.sp) }
+                shape = RoundedCornerShape(12.dp),
+            ) { Text("Notification Access", fontSize = 13.sp) }
         }
+    }
+
+    // ── Edit Bottom Sheet ──
+    if (showEditSheet) {
+        EditBikeSheet(
+            models = models,
+            selectedModelIndex = selectedModelIndex,
+            selectedColorIndex = selectedColorIndex,
+            onSelectModel = { i ->
+                selectedModelIndex = i
+                selectedColorIndex = 0
+                prefs.edit().putInt("model_index", i).putInt("color_index", 0).apply()
+            },
+            onSelectColor = { i ->
+                selectedColorIndex = i
+                prefs.edit().putInt("color_index", i).apply()
+            },
+            onDismiss = { showEditSheet = false },
+        )
     }
 }
 
-// ─── Bike Model Carousel ───────────────────────────────────────────────────
+// ─── Hero Bike Image ───────────────────────────────────────────────────────
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun BikeModelCarousel(
-    models: List<BikeModel>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
+fun BikeHeroImage(
+    color: Color,
+    modelName: String,
+    colorName: String,
+    onLongPress: () -> Unit,
 ) {
-    val listState = rememberLazyListState()
+    var showTooltip by remember { mutableStateOf(false) }
 
-    LaunchedEffect(selectedIndex) {
-        listState.animateScrollToItem(selectedIndex)
+    LaunchedEffect(showTooltip) {
+        if (showTooltip) {
+            kotlinx.coroutines.delay(1200)
+            showTooltip = false
+        }
     }
 
-    LazyRow(
-        state = listState,
-        contentPadding = PaddingValues(horizontal = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = {},
+                onLongClick = {
+                    showTooltip = true
+                    onLongPress()
+                }
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        itemsIndexed(models) { i, model ->
-            val selected = i == selectedIndex
-            Card(
-                onClick = { onSelect(i) },
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (selected) Accent.copy(alpha = 0.15f) else SurfaceLight
-                ),
-                border = if (selected) BorderStroke(1.5.dp, Accent) else null,
+        // Bike drawing with glass-like card
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Surface),
+            border = BorderStroke(1.dp, SurfaceLight),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp),
+        ) {
+            Box(
                 modifier = Modifier
-                    .width(120.dp)
-                    .padding(vertical = 4.dp),
+                    .fillMaxSize()
+                    .padding(12.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(
-                        model.name,
-                        color = if (selected) Accent else TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        model.colors.take(4).forEach { c ->
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(c.color)
-                                    .border(0.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
-                            )
-                        }
-                        if (model.colors.size > 4) {
-                            Text("+", color = TextSecondary, fontSize = 9.sp)
-                        }
+                BikeDrawing(color, modifier = Modifier.fillMaxSize())
+
+                if (showTooltip) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .background(Accent.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text("Edit", color = Background, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
         }
-    }
-}
 
-// ─── Color Selector ────────────────────────────────────────────────────────
+        Spacer(Modifier.height(8.dp))
 
-@Composable
-fun ColorSelector(
-    colors: List<BikeColorOption>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(horizontal = 8.dp),
-        ) {
-            itemsIndexed(colors) { i, option ->
-                val selected = i == selectedIndex
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(option.color)
-                            .then(
-                                if (selected) Modifier.border(2.5.dp, Accent, CircleShape)
-                                else Modifier.border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                            )
-                            .clickable { onSelect(i) }
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        option.name,
-                        color = if (selected) Accent else TextSecondary,
-                        fontSize = 10.sp,
-                        maxLines = 1,
-                    )
-                }
-            }
+        // Model name
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(modelName, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(8.dp))
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .clip(CircleShape)
+                    .background(color)
+                    .border(0.5.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+            )
         }
+        Text(colorName, color = Accent, fontSize = 13.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "Long press to change model & color",
+            color = TextSecondary.copy(alpha = 0.5f),
+            fontSize = 11.sp,
+        )
     }
 }
 
-// ─── Bike Silhouette ───────────────────────────────────────────────────────
+// ─── Bike Drawing ──────────────────────────────────────────────────────────
 
 @Composable
-fun BikeSilhouette(color: Color, modifier: Modifier = Modifier) {
+fun BikeDrawing(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val cx = w / 2
-        val cy = h / 2 + 20f
+        val cy = h / 2 + 12f
+        val paint = color
+        val line = Stroke(width = 3f)
 
-        val stroke = Stroke(width = 3.5f)
-        val fillColor = color
+        // ── Wheels ──
+        drawCircle(paint, radius = 36f, center = Offset(cx - 110f, cy), style = line)
+        drawCircle(paint.copy(alpha = 0.25f), radius = 36f, center = Offset(cx - 110f, cy))
+        // Spokes hint
+        drawCircle(paint.copy(alpha = 0.15f), radius = 10f, center = Offset(cx - 110f, cy))
 
-        // Rear wheel
-        drawCircle(color = fillColor, radius = 28f, center = Offset(cx - 90f, cy), style = stroke)
-        drawCircle(color = fillColor.copy(alpha = 0.3f), radius = 28f, center = Offset(cx - 90f, cy))
+        drawCircle(paint, radius = 36f, center = Offset(cx + 110f, cy), style = line)
+        drawCircle(paint.copy(alpha = 0.25f), radius = 36f, center = Offset(cx + 110f, cy))
+        drawCircle(paint.copy(alpha = 0.15f), radius = 10f, center = Offset(cx + 110f, cy))
 
-        // Front wheel
-        drawCircle(color = fillColor, radius = 28f, center = Offset(cx + 90f, cy), style = stroke)
-        drawCircle(color = fillColor.copy(alpha = 0.3f), radius = 28f, center = Offset(cx + 90f, cy))
-
-        val path = Path().apply {
+        // ── Main body (cruiser profile) ──
+        val body = Path().apply {
             // Seat
-            moveTo(cx - 50f, cy - 65f)
-            cubicTo(cx - 30f, cy - 75f, cx + 10f, cy - 75f, cx + 30f, cy - 65f)
-
-            // Tail
-            lineTo(cx + 40f, cy - 60f)
-            lineTo(cx + 42f, cy - 50f)
-            lineTo(cx + 38f, cy - 45f)
-
-            // Fuel tank
-            lineTo(cx + 10f, cy - 45f)
-            cubicTo(cx - 5f, cy - 55f, cx - 20f, cy - 55f, cx - 40f, cy - 50f)
-
-            // Down tube
-            lineTo(cx - 65f, cy - 15f)
-            lineTo(cx - 65f, cy + 10f)
-
-            // Engine / bottom
-            lineTo(cx - 20f, cy + 15f)
-            lineTo(cx + 10f, cy + 10f)
-            lineTo(cx + 40f, cy + 5f)
-            lineTo(cx + 60f, cy + 10f)
-
+            moveTo(cx - 70f, cy - 42f)
+            cubicTo(cx - 50f, cy - 52f, cx - 10f, cy - 52f, cx + 10f, cy - 42f)
+            // Tail cowl
+            cubicTo(cx + 30f, cy - 36f, cx + 45f, cy - 25f, cx + 50f, cy - 15f)
+            lineTo(cx + 52f, cy - 5f)
+            // Bottom of tail
+            lineTo(cx + 45f, cy - 3f)
+            // Under seat
+            lineTo(cx + 10f, cy - 3f)
+            // Engine area bottom
+            cubicTo(cx - 5f, cy + 5f, cx - 20f, cy + 5f, cx - 35f, cy)
+            // Down tube to front
+            lineTo(cx - 55f, cy + 5f)
+            lineTo(cx - 75f, cy - 5f)
             // Front fork
-            lineTo(cx + 60f, cy - 30f)
-            lineTo(cx + 70f, cy - 55f)
-            lineTo(cx + 75f, cy - 60f)
-
+            lineTo(cx - 75f, cy - 52f)
+            // Headlight area
+            lineTo(cx - 78f, cy - 60f)
+            lineTo(cx - 85f, cy - 62f)
             // Handlebar
-            lineTo(cx + 50f, cy - 70f)
-
+            lineTo(cx - 95f, cy - 68f)
+            lineTo(cx - 100f, cy - 62f)
+            // Front fork down
+            lineTo(cx - 90f, cy - 50f)
+            lineTo(cx - 90f, cy - 15f)
+            // Back to engine
+            lineTo(cx - 75f, cy - 5f)
+            // Up to tank
+            cubicTo(cx - 60f, cy - 20f, cx - 45f, cy - 30f, cx - 35f, cy - 42f)
+            // Tank top
+            cubicTo(cx - 25f, cy - 50f, cx - 15f, cy - 52f, cx - 5f, cy - 50f)
             close()
         }
+        drawPath(body, color = paint)
+        drawPath(body, color = paint.copy(alpha = 0.4f), style = line)
 
-                    drawPath(path, color = fillColor)
-        drawPath(path, color = fillColor.copy(alpha = 0.8f), style = stroke)
+        // ── Front fender ──
+        val frontFender = Path().apply {
+            moveTo(cx + 72f, cy - 32f)
+            cubicTo(cx + 82f, cy - 28f, cx + 92f, cy - 28f, cx + 100f, cy - 32f)
+            lineTo(cx + 102f, cy - 28f)
+            cubicTo(cx + 92f, cy - 23f, cx + 82f, cy - 23f, cx + 72f, cy - 28f)
+            close()
+        }
+        drawPath(frontFender, color = paint)
 
-        // Fender lines
-        drawLine(fillColor, Offset(cx - 115f, cy - 25f), Offset(cx - 65f, cy - 25f), strokeWidth = 2.5f)
-        drawLine(fillColor, Offset(cx + 65f, cy - 25f), Offset(cx + 115f, cy - 25f), strokeWidth = 2.5f)
+        // ── Rear fender ──
+        val rearFender = Path().apply {
+            moveTo(cx - 75f, cy - 28f)
+            cubicTo(cx - 88f, cy - 24f, cx - 98f, cy - 24f, cx - 108f, cy - 28f)
+            lineTo(cx - 110f, cy - 24f)
+            cubicTo(cx - 98f, cy - 19f, cx - 88f, cy - 19f, cx - 75f, cy - 24f)
+            close()
+        }
+        drawPath(rearFender, color = paint)
+
+        // ── Exhaust ──
+        val exhaust = Path().apply {
+            moveTo(cx - 30f, cy + 5f)
+            lineTo(cx - 50f, cy + 18f)
+            lineTo(cx - 55f, cy + 22f)
+            lineTo(cx - 65f, cy + 22f)
+            cubicTo(cx - 75f, cy + 22f, cx - 85f, cy + 18f, cx - 90f, cy + 15f)
+        }
+        drawPath(exhaust, color = paint.copy(alpha = 0.6f), style = Stroke(width = 2.5f))
+
+        // ── Engine highlight ──
+        drawCircle(paint.copy(alpha = 0.12f), radius = 18f, center = Offset(cx - 35f, cy - 3f))
+        drawCircle(paint.copy(alpha = 0.08f), radius = 14f, center = Offset(cx - 35f, cy - 3f))
+
+        // ── Headlight ──
+        drawCircle(paint, radius = 6f, center = Offset(cx - 86f, cy - 60f), style = line)
+        drawCircle(paint.copy(alpha = 0.3f), radius = 4f, center = Offset(cx - 86f, cy - 60f))
+    }
+}
+
+// ─── Edit Bike Bottom Sheet ───────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditBikeSheet(
+    models: List<BikeModel>,
+    selectedModelIndex: Int,
+    selectedColorIndex: Int,
+    onSelectModel: (Int) -> Unit,
+    onSelectColor: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Surface,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Accent.copy(alpha = 0.4f)) },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+        ) {
+            Text("Select Model", color = Accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+
+            val listState = rememberLazyListState()
+            LaunchedEffect(selectedModelIndex) {
+                listState.animateScrollToItem(selectedModelIndex)
+            }
+            LazyRow(
+                state = listState,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                itemsIndexed(models) { i, model ->
+                    val selected = i == selectedModelIndex
+                    Card(
+                        onClick = { onSelectModel(i) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) Accent.copy(alpha = 0.15f) else SurfaceLight
+                        ),
+                        border = if (selected) BorderStroke(1.5.dp, Accent) else null,
+                        modifier = Modifier.width(130.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                model.name,
+                                color = if (selected) Accent else TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                model.colors.take(5).forEach { c ->
+                                    Box(
+                                        modifier = Modifier
+                                            .size(10.dp)
+                                            .clip(CircleShape)
+                                            .background(c.color)
+                                            .border(0.5.dp, Color.White.copy(alpha = 0.2f), CircleShape)
+                                    )
+                                }
+                                if (model.colors.size > 5) {
+                                    Text("+${model.colors.size - 5}", color = TextSecondary, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            val currentModel = models.getOrNull(selectedModelIndex) ?: models.first()
+            Text(
+                "Color: ${currentModel.colors.getOrNull(selectedColorIndex)?.name ?: ""}",
+                color = Accent,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(12.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                itemsIndexed(currentModel.colors) { i, option ->
+                    val selected = i == selectedColorIndex
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(option.color)
+                                .then(
+                                    if (selected) Modifier.border(3.dp, Accent, CircleShape)
+                                    else Modifier.border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                                )
+                                .clickable { onSelectColor(i) }
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            option.name,
+                            color = if (selected) Accent else TextSecondary,
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Accent, contentColor = Background),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Done", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
+        }
     }
 }
 
@@ -453,12 +587,9 @@ fun ConnectionSection(
         ?: TripperBleService.ConnectionState.Disconnected
     val deviceName = bleService?.deviceName?.collectAsStateWithLifecycle()?.value ?: ""
 
-    // Remember last connected device in preferences
     val context = LocalContext.current
     val prefs = context.getSharedPreferences("tripper_prefs", 0)
-    val lastDevice by remember {
-        derivedStateOf { prefs.getString("last_device", null) }
-    }
+    val lastDevice = remember { prefs.getString("last_device", null) }
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -475,8 +606,8 @@ fun ConnectionSection(
 
             when (connectionState) {
                 is TripperBleService.ConnectionState.Disconnected -> {
-                    val indicator = if (lastDevice != null) "Last: $lastDevice" else "Tap to connect"
-                    Text(indicator, color = TextSecondary, fontSize = 13.sp)
+                    val hint = if (lastDevice != null) "Previously: $lastDevice" else "Tap to connect to Tripper"
+                    Text(hint, color = TextSecondary, fontSize = 13.sp)
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = onScan,
@@ -488,12 +619,13 @@ fun ConnectionSection(
                             disabledContentColor = TextSecondary,
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
                     ) {
-                        if (lastDevice != null) Text("Reconnect", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        else Text("Scan & Connect", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text(
+                            if (lastDevice != null) "Reconnect" else "Scan & Connect",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                        )
                     }
                 }
                 is TripperBleService.ConnectionState.Scanning -> {
@@ -507,13 +639,11 @@ fun ConnectionSection(
                     Text("Connecting...", color = TextSecondary, fontSize = 13.sp)
                 }
                 is TripperBleService.ConnectionState.Connected -> {
-                    // Remember this device
                     LaunchedEffect(deviceName) {
                         if (deviceName.isNotBlank()) {
                             prefs.edit().putString("last_device", deviceName).apply()
                         }
                     }
-
                     Box(
                         modifier = Modifier
                             .size(12.dp)
@@ -531,9 +661,7 @@ fun ConnectionSection(
                             contentColor = Color(0xFFFF4444),
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp),
+                        modifier = Modifier.fillMaxWidth().height(44.dp),
                     ) { Text("Disconnect", fontWeight = FontWeight.Bold) }
                 }
             }
@@ -541,30 +669,31 @@ fun ConnectionSection(
     }
 }
 
-// ─── Music Section ─────────────────────────────────────────────────────────
+// ─── Collapsible Section ───────────────────────────────────────────────────
 
 @Composable
-fun MusicSection() {
-    val sectionVisible = remember { mutableStateOf(false) }
+fun CollapsibleSection(emoji: String, title: String, description: String) {
+    var expanded by remember { mutableStateOf(false) }
 
     Column {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .clickable { sectionVisible.value = !sectionVisible.value }
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
                 .padding(vertical = 4.dp),
         ) {
-            Text("🎵", fontSize = 16.sp)
+            Text(emoji, fontSize = 16.sp)
             Spacer(Modifier.width(8.dp))
-            Text("Music", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Text(
-                if (sectionVisible.value) "▲" else "▼",
+                if (expanded) "▲" else "▼",
                 color = TextSecondary,
-                fontSize = 12.sp
+                fontSize = 11.sp,
             )
         }
-        AnimatedVisibility(visible = sectionVisible.value) {
+        AnimatedVisibility(visible = expanded) {
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = Surface),
@@ -572,57 +701,9 @@ fun MusicSection() {
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("No music playing", color = TextSecondary, fontSize = 14.sp)
+                    Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Music info from Spotify, YouTube Music & others will appear here.",
-                        color = TextSecondary.copy(alpha = 0.6f),
-                        fontSize = 12.sp
-                    )
-                }
-            }
-        }
-    }
-}
-
-// ─── Caller Section ─────────────────────────────────────────────────────────
-
-@Composable
-fun CallerSection() {
-    val sectionVisible = remember { mutableStateOf(false) }
-
-    Column {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clickable { sectionVisible.value = !sectionVisible.value }
-                .padding(vertical = 4.dp),
-        ) {
-            Text("📞", fontSize = 16.sp)
-            Spacer(Modifier.width(8.dp))
-            Text("Caller ID", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.weight(1f))
-            Text(
-                if (sectionVisible.value) "▲" else "▼",
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
-        }
-        AnimatedVisibility(visible = sectionVisible.value) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Surface),
-                border = BorderStroke(1.dp, SurfaceLight),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("No incoming call", color = TextSecondary, fontSize = 14.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Incoming caller information will be shown here and relayed to Tripper.",
-                        color = TextSecondary.copy(alpha = 0.6f),
-                        fontSize = 12.sp
-                    )
+                    Text(description, color = TextSecondary.copy(alpha = 0.6f), fontSize = 12.sp)
                 }
             }
         }
