@@ -28,7 +28,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -219,16 +221,10 @@ fun TripperAppScreen(
             )
             Spacer(Modifier.height(24.dp))
 
-            // ── Divider ──
-            HorizontalDivider(color = Accent.copy(alpha = 0.15f), thickness = 1.dp)
-            Spacer(Modifier.height(16.dp))
-
-            // ── Music ──
-            CollapsibleSection("🎵", "Music", "Now playing from Spotify, YouTube Music will appear here.")
-            Spacer(Modifier.height(12.dp))
-
-            // ── Caller ──
-            CollapsibleSection("📞", "Caller ID", "Incoming caller info will be relayed to Tripper.")
+            // ── Tripper Live Preview ──
+            Text("Tripper Display Preview", color = Accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(10.dp))
+            TripperPreview()
             Spacer(Modifier.height(24.dp))
 
             // ── Settings ──
@@ -299,20 +295,26 @@ fun BikeHeroImage(
             border = BorderStroke(1.dp, SurfaceLight),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp),
+                .height(240.dp),
         ) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(12.dp),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                BikeDrawing(color, modifier = Modifier.fillMaxSize())
+                Image(
+                    painter = painterResource(R.drawable.default_bike),
+                    contentDescription = modelName,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                )
 
                 if (showTooltip) {
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
+                            .padding(8.dp)
                             .background(Accent.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
                             .padding(horizontal = 10.dp, vertical = 4.dp)
                     ) {
@@ -665,6 +667,151 @@ fun ConnectionSection(
                     ) { Text("Disconnect", fontWeight = FontWeight.Bold) }
                 }
             }
+        }
+    }
+}
+
+// ─── Tripper Live Preview ──────────────────────────────────────────────────
+
+@Composable
+fun TripperPreview() {
+    var mode by remember { mutableStateOf(0) } // 0=nav, 1=music, 2=call
+    val modeName = listOf("Navigation", "Music", "Incoming Call")
+    val modeIcon = listOf("🗺️", "🎵", "📞")
+
+    val turnIcon = listOf("⬆", "↗", "→", "↘", "⬇", "↙", "←", "↖", "↩")
+    val currentIcon = remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(mode) {
+        while (true) {
+            kotlinx.coroutines.delay(2000)
+            currentIcon.intValue = (currentIcon.intValue + 1) % turnIcon.size
+        }
+    }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Surface),
+        border = BorderStroke(1.dp, SurfaceLight),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // Mode selector tabs
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SurfaceLight, RoundedCornerShape(12.dp))
+                    .padding(3.dp),
+            ) {
+                (0..2).forEach { i ->
+                    val selected = i == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selected) Accent else Color.Transparent)
+                            .clickable { mode = i }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            modeIcon[i],
+                            fontSize = 14.sp,
+                            color = if (selected) Background else TextSecondary,
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+
+            // Round display
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(CircleShape)
+                    .background(SurfaceLight)
+                    .border(2.dp, Accent.copy(alpha = 0.5f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                when (mode) {
+                    0 -> NavigationPreview(turnIcon[currentIcon.intValue])
+                    1 -> MusicPreview()
+                    2 -> CallPreview()
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Text(modeName[mode], color = Accent, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun NavigationPreview(icon: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(icon, fontSize = 42.sp)
+        Spacer(Modifier.height(4.dp))
+        Text("250 m", color = Accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(2.dp))
+        Text("Turn right", color = TextPrimary.copy(alpha = 0.7f), fontSize = 13.sp)
+        Spacer(Modifier.height(4.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("10:25", color = TextSecondary, fontSize = 11.sp)
+            Text("|", color = TextSecondary.copy(alpha = 0.3f), fontSize = 11.sp)
+            Text("12.4 km", color = TextSecondary, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun MusicPreview() {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("♫", fontSize = 36.sp)
+        Spacer(Modifier.height(6.dp))
+        Text("Bohemian Rhapsody", color = Accent, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Spacer(Modifier.height(2.dp))
+        Text("Queen", color = TextPrimary.copy(alpha = 0.6f), fontSize = 12.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            listOf(0.6f, 0.4f, 0.8f, 0.3f, 0.7f).forEach { h ->
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height((20 * h).dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Accent)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CallPreview() {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text("📞", fontSize = 36.sp)
+        Spacer(Modifier.height(6.dp))
+        Text("Incoming", color = Accent, fontSize = 13.sp)
+        Spacer(Modifier.height(2.dp))
+        Text("Mum", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(4.dp))
+        Text("Mobile", color = TextSecondary.copy(alpha = 0.6f), fontSize = 11.sp)
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF331111)),
+                contentAlignment = Alignment.Center,
+            ) { Text("✕", color = Color(0xFFFF4444), fontSize = 16.sp) }
+            Box(
+                Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF113311)),
+                contentAlignment = Alignment.Center,
+            ) { Text("✓", color = Accent, fontSize = 16.sp) }
         }
     }
 }
