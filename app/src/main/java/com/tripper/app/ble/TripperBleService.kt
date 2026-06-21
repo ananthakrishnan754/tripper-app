@@ -62,13 +62,19 @@ class TripperBleService : Service() {
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            if (device.name != null && device.name.uppercase().contains("TRIPPER")) {
+            val name = device.name ?: return
+            // Match by name: "tripperfilter" or any name containing "tripper" (case-insensitive)
+            if (name.equals("tripperfilter", ignoreCase = true) ||
+                name.contains("tripper", ignoreCase = true)
+            ) {
+                android.util.Log.i("TripperBle", "Found device: $name (${device.address})")
                 bluetoothLeScanner?.stopScan(this)
                 connect(device)
             }
         }
 
         override fun onScanFailed(errorCode: Int) {
+            android.util.Log.e("TripperBle", "Scan failed: $errorCode")
             _connectionState.value = ConnectionState.Disconnected
         }
     }
@@ -169,20 +175,32 @@ class TripperBleService : Service() {
 
         _connectionState.value = ConnectionState.Scanning
 
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid.fromString(SERVICE_UUID))
-            .build()
+        // Try known device name filter first, then fall back to unfiltered name match
+        val nameFilter = try {
+            ScanFilter.Builder().setDeviceName("tripperfilter").build()
+        } catch (e: Exception) { null }
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            .setNumOfMatches(ScanSettings.MATCH_NUM_ONE_ADVERTISEMENT)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .build()
 
-        bluetoothLeScanner?.startScan(listOf(filter), settings, scanCallback)
+        bluetoothLeScanner?.startScan(
+            if (nameFilter != null) listOf(nameFilter) else null,
+            settings,
+            scanCallback,
+        )
 
-        // Timeout after 15 seconds
+        // Timeout after 15s, fallback to unfiltered if name filter got nothing
         scope.launch {
-            delay(15000)
+            delay(8000)
+            if (_connectionState.value is ConnectionState.Scanning && nameFilter != null) {
+                bluetoothLeScanner?.stopScan(scanCallback)
+                bluetoothLeScanner?.startScan(null, settings, scanCallback)
+            }
+        }
+        scope.launch {
+            delay(20000)
             if (_connectionState.value is ConnectionState.Scanning) {
                 bluetoothLeScanner?.stopScan(scanCallback)
                 _connectionState.value = ConnectionState.Disconnected
