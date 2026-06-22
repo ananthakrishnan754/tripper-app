@@ -204,4 +204,32 @@ object PacketBuilder {
             mode = mode
         )
     }
+
+    fun buildMusicTitle(title: String): ByteArray {
+        val packet = ByteArray(20)
+        packet[0] = 0x12
+        packet[1] = 1 // flags: playing
+        val text = title.take(16)
+        for (i in text.indices) {
+            packet[2 + i] = text[i].code.toByte()
+        }
+        val crc = crc16(packet.copyOfRange(0, 18))
+        packet[18] = crc[0]
+        packet[19] = crc[1]
+        return packet
+    }
+
+    fun buildMusicArtist(artist: String): ByteArray {
+        val packet = ByteArray(20)
+        packet[0] = 0x12
+        packet[1] = 2 // flags: artist
+        val text = artist.take(16)
+        for (i in text.indices) {
+            packet[2 + i] = text[i].code.toByte()
+        }
+        val crc = crc16(packet.copyOfRange(0, 18))
+        packet[18] = crc[0]
+        packet[19] = crc[1]
+        return packet
+    }
 }

@@ -42,13 +42,14 @@ class GoogleMapsListener : NotificationListenerService() {
         val notification = sbn.notification
         val extras = notification.extras ?: return
 
-        val title = extras.getString(NotificationCompat.EXTRA_TITLE, "")
-        val text = extras.getString(NotificationCompat.EXTRA_TEXT, "")
-        val subText = extras.getString(NotificationCompat.EXTRA_SUB_TEXT, "")
+        val title = (extras.getCharSequence(NotificationCompat.EXTRA_TITLE) ?: "").toString()
+        val text = (extras.getCharSequence(NotificationCompat.EXTRA_TEXT) ?: "").toString()
+        val subText = (extras.getCharSequence(NotificationCompat.EXTRA_SUB_TEXT) ?: "").toString()
 
         if (title.isBlank()) return
 
-        Log.d(TAG, "GMaps notification: title='$title' text='$text' sub='$subText'")
+        Log.i(TAG, "Raw notification: title='$title' text='$text' sub='$subText'")
+        Log.i(TAG, "Extras keys: ${extras.keySet().joinToString()}")
         onNavigationUpdate(title, text, subText)
     }
 
@@ -65,6 +66,7 @@ class GoogleMapsListener : NotificationListenerService() {
 
         lastTurnText = title
 
+        val etaFormat = if (eta.hours > 0 || eta.minutes > 0 || eta.seconds > 0) 10 else 0
         // Publish to live preview
         com.tripper.app.live.LiveDataRepository.updateNav(
             com.tripper.app.live.NavInfo(
@@ -74,6 +76,12 @@ class GoogleMapsListener : NotificationListenerService() {
                 eta = if (eta.hours > 0 || eta.minutes > 0) "${eta.hours}:${"%02d".format(eta.minutes)}" else "",
                 totalDistance = "",
                 streetName = "",
+                iconId = turn.iconId,
+                distanceMeters = distance.meters,
+                etaHours = eta.hours,
+                etaMinutes = eta.minutes,
+                etaSeconds = eta.seconds,
+                etaFormat = etaFormat,
             )
         )
 

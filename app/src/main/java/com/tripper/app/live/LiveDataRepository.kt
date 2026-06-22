@@ -10,6 +10,12 @@ data class NavInfo(
     val eta: String = "",
     val totalDistance: String = "",
     val streetName: String = "",
+    val iconId: Int = -1,
+    val distanceMeters: Int = 0,
+    val etaHours: Int = 0,
+    val etaMinutes: Int = 0,
+    val etaSeconds: Int = 0,
+    val etaFormat: Int = 0,
 )
 
 data class MusicInfo(

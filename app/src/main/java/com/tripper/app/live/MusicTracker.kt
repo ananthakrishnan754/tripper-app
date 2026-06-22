@@ -40,18 +40,25 @@ class MusicTracker : NotificationListenerService() {
 
         if (title.isBlank() && text.isBlank()) return
 
-        Log.d(TAG, "Music: $title - $text ($subText) from ${sbn.packageName}")
+        Log.i(TAG, "Music: '$title' / '$text' / '$subText' from ${sbn.packageName}")
 
-        // If text contains " - " it's likely "Artist - Song" format from some players
         val artist: String
         val song: String
-        if (text.contains(" - ")) {
-            val parts = text.split(" - ", limit = 2)
-            artist = parts[0].trim()
-            song = parts[1].trim()
-        } else {
-            song = title
-            artist = text
+        when {
+            text.contains(" - ") -> {
+                val parts = text.split(" - ", limit = 2)
+                artist = parts[0].trim()
+                song = parts[1].trim()
+            }
+            text.contains(" · ") -> {
+                val parts = text.split(" · ", limit = 2)
+                artist = parts[0].trim()
+                song = title
+            }
+            else -> {
+                song = title
+                artist = text
+            }
         }
 
         LiveDataRepository.updateMusic(

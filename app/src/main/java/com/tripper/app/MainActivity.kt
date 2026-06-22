@@ -3,6 +3,7 @@ package com.tripper.app
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.bluetooth.BluetoothDevice
 import android.content.*
 import android.content.pm.PackageManager
 import android.os.Build
@@ -62,10 +63,13 @@ class MainActivity : ComponentActivity() {
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            bleService = (service as? TripperBleService.LocalBinder)?.getService()
+            val s = (service as? TripperBleService.LocalBinder)?.getService()
+            android.util.Log.i("TripperBle", "onServiceConnected: service=$s name=$name")
+            bleService = s
             bound = true
         }
         override fun onServiceDisconnected(name: ComponentName?) {
+            android.util.Log.i("TripperBle", "onServiceDisconnected: name=$name")
             bleService = null
             bound = false
         }
@@ -86,12 +90,20 @@ class MainActivity : ComponentActivity() {
         val filter = IntentFilter("com.tripper.app.SEND_NAV")
         registerReceiver(navReceiver, filter, RECEIVER_NOT_EXPORTED)
 
+        android.util.Log.i("TripperBle", "MainActivity onCreate - starting service...")
         Intent(this, TripperBleService::class.java).also { intent ->
-            bindService(intent, connection, Context.BIND_AUTO_CREATE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
+            try {
+                android.util.Log.i("TripperBle", "Binding service...")
+                bindService(intent, connection, Context.BIND_AUTO_CREATE)
+                android.util.Log.i("TripperBle", "Calling startForegroundService...")
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(intent)
+                } else {
+                    startService(intent)
+                }
+                android.util.Log.i("TripperBle", "Service start calls completed")
+            } catch (e: Exception) {
+                android.util.Log.e("TripperBle", "Failed to start service: $e")
             }
         }
 
@@ -107,7 +119,10 @@ class MainActivity : ComponentActivity() {
                 )
             ) {
                 TripperAppScreen(
-                    onScan = { bleService?.scan() },
+                    onScan = {
+                        android.util.Log.i("TripperBle", "onScan clicked! bleService=${bleService}")
+                        bleService?.scan()
+                    },
                     onDisconnect = { bleService?.disconnect() },
                     onOpenSettings = { openNotificationAccessSettings() },
                     bleService = bleService,
@@ -139,10 +154,8 @@ class MainActivity : ComponentActivity() {
         val perms = mutableListOf(
             Manifest.permission.BLUETOOTH_SCAN,
             Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.ACCESS_FINE_LOCATION,
         )
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            perms.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -657,6 +670,8 @@ fun ConnectionSection(
                             prefs.edit().putString("last_device", deviceName).apply()
                         }
                     }
+                    val bondState = bleService?.bondState?.collectAsStateWithLifecycle()?.value
+                        ?: BluetoothDevice.BOND_NONE
                     Box(
                         modifier = Modifier
                             .size(12.dp)
@@ -666,6 +681,13 @@ fun ConnectionSection(
                     Spacer(Modifier.height(6.dp))
                     Text("Connected", color = Accent, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text(deviceName.ifBlank { "Tripper" }, color = TextSecondary, fontSize = 13.sp)
+                    if (bondState == BluetoothDevice.BOND_BONDING) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Pairing...", color = AccentDim, fontSize = 12.sp)
+                    } else if (bondState != BluetoothDevice.BOND_BONDED && bondState != BluetoothDevice.BOND_NONE) {
+                        Spacer(Modifier.height(4.dp))
+                        Text("Pairing failed", color = Color(0xFFFF4444), fontSize = 12.sp)
+                    }
                     Spacer(Modifier.height(12.dp))
                     Button(
                         onClick = onDisconnect,
