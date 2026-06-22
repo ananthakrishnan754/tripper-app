@@ -132,7 +132,12 @@ Offset  Size  Field
 ```bash
 git clone https://github.com/ananthakrishnan754/tripper-app.git
 cd tripper-app
+
+# Linux/macOS
 ./gradlew assembleDebug
+
+# Windows
+gradlew assembleDebug
 ```
 
 ## Tech Stack
